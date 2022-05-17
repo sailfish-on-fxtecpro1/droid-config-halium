@@ -61,6 +61,8 @@ copy_files_from() {
 
 copy_files_from sparse
 
+mkdir -p %{buildroot}/var/lib/lxc/android/rootfs
 
 %files -f tmp/droid-config.files
 %defattr(-,root,root,-)
+/var/lib/lxc/android/rootfs
