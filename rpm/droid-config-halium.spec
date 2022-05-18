@@ -74,7 +74,7 @@ copy_files_from() {
   fi
 }
 
-copy_files_from sparse
+copy_files_from ./sparse
 
 mkdir -p %{buildroot}/var/lib/lxc/android/rootfs
 
