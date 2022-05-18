@@ -11,6 +11,7 @@ Release: %{rel_date}
 %endif
 License:    GPLv2
 Source0:    %{name}-%{version}.tar.bz2
+AutoReqProv: no
 
 %description
 %{summary}.
@@ -24,6 +25,20 @@ mkdir -p %{buildroot}
 rm -rf tmp/
 mkdir -p tmp/
 echo "%defattr(-,root,root,-)" > tmp/droid-config.files
+
+do_not_move_to_lib64=(
+    "firmware"
+    "modules"
+    "oneshot.d"
+    "startup"
+    "sysctl.d"
+    "systemd/system"
+    "systemd/user"
+    "sysusers.d"
+    "tmpfiles.d"
+    "udev"
+    "droid/hw-group.d"
+    )
 
 copy_files_from() {
   config_dir=$1
