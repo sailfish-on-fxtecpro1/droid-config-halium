@@ -17,7 +17,10 @@ AutoReqProv: no
 %{summary}.
 
 %prep
-
+%if 0%{?_obs_build_project:1}
+# For OBS builds we need to have tarball extracted after tar_git packaging it
+%setup -q -n %{name}-%{version}
+%endif
 
 %install
 rm -rf %{buildroot}
