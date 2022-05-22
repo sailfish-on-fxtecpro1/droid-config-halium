@@ -26,10 +26,14 @@ fi
 mkdir -p /dev/__properties__
 mkdir -p /dev/socket
 
-# Halim 11 hack: overlay /vendor/bin/vndservicemanager
-if [ -f /usr/share/halium-overlay/vendor/bin/vndservicemanager ]; then
-    mount -o bind /usr/share/halium-overlay/vendor/bin/vndservicemanager /android/vendor/bin/vndservicemanager
-fi
+# Bind mount any files in /usr/share/halium-overlay/ over the android system
+OVERLAYDIR=/usr/share/halium-overlay/
+for f in $(find $OVERLAYDIR -type f); do
+    ANDROID_POINT=${f#"$OVERLAYDIR"}
+    echo mounting $f to $ANDROID_POINT;
+    mount -o bind $f /android/$ANDROID_POINT
+done
+
 
 lxc-start -n android -- /init
 
