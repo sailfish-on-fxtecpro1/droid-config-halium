@@ -28,7 +28,7 @@ mkdir -p /dev/socket
 
 # Bind mount any files in /usr/share/halium-overlay/ over the android system
 OVERLAYDIR=/usr/share/halium-overlay/
-for f in $(find $OVERLAYDIR -type f); do
+for f in $(find $OVERLAYDIR -type f) $(find $OVERLAYDIR -type l); do
     ANDROID_POINT=${f#"$OVERLAYDIR"}
     echo mounting $f to $ANDROID_POINT;
     mount -o bind $f /android/$ANDROID_POINT
