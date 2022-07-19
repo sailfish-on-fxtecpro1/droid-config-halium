@@ -1,4 +1,4 @@
-Name:	    droid-config-halium
+Name:	    droid-config-halium-%{flavour}
 Provides:   droid-hal
 Provides:   droid-config
 Summary:    Config packages for
@@ -86,6 +86,17 @@ copy_files_from ./sparse
 
 mkdir -p %{buildroot}/var/lib/lxc/android/rootfs
 
+mkdir -p $RPM_BUILD_ROOT/%{_datadir}/ssu/features.d/
+
+sed -e "s|@FLAVOUR@|%{flavour}|g" \
+%if "%{flavour}" != "testing"
+    -e "s|:/%%(release)/sailfish_%%(release)_%%(arch)|/sailfish_latest_%%(arch)|g" \
+%endif
+    adaptation-halium.ini.in > $RPM_BUILD_ROOT/%{_datadir}/ssu/features.d/adaptation-halum.ini
+
+
 %files -f tmp/droid-config.files
 %defattr(-,root,root,-)
 /var/lib/lxc/android/rootfs
+%{_datadir}/ssu/features.d/adaptation-halum.ini
+
