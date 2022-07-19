@@ -1,6 +1,7 @@
 Name:	    droid-config-halium-%{flavour}
 Provides:   droid-hal
 Provides:   droid-config
+Provides:   droid-config-halium
 Summary:    Config packages for
 Version:    1
 %if 0%{?_obs_build_project:1}
