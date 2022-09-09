@@ -34,6 +34,9 @@ for f in $(find $OVERLAYDIR -type f) $(find $OVERLAYDIR -type l); do
     mount -o bind $f /android/$ANDROID_POINT
 done
 
+if [ -f /usr/bin/droid/halium-setup-local.sh ]; then
+    /bin/sh /usr/bin/droid/halium-setup-local.sh
+fi
 
 lxc-start -n android -- /init
 
