@@ -1,4 +1,5 @@
 #!/bin/sh
+return 0
 
 c=`getprop | grep keymaster | grep running | wc -l`
 while [ $c -lt 1 ]
