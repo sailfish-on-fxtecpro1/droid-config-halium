@@ -4,4 +4,4 @@ pattern = Feature halum adaptation
 description = Enable ssu for community ports based on halium
 
 [repositories]
-adaptation-halium = https://repo.sailfishos.org/obs/nemo:/@FLAVOUR@:/hw:/halium:/11:/%(release)/sailfish_%(release)_%(arch)
+adaptation-halium = https://repo.sailfishos.org/obs/nemo:/@FLAVOUR@:/hw:/halium:/12:/%(release)/sailfish_%(release)_%(arch)
