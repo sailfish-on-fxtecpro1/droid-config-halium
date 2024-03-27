@@ -95,6 +95,41 @@ sed -e "s|@FLAVOUR@|%{flavour}|g" \
 %endif
     adaptation-halium.ini.in > $RPM_BUILD_ROOT/%{_datadir}/ssu/features.d/adaptation-halum.ini
 
+%post
+# Create Android-specific users based on droid-hal-device.inc users subpackage
+
+# NOTE: We do not delete groups/users in any case since that would cause issues
+# with users being removed from groups where they should really be in.
+
+echo creating droid users and groups
+[ -e %{_prefix}/lib/droid ] && cat %{_prefix}/lib/droid | while read name id; do
+    if ! getent group $name; then
+        if getent group $id; then
+            other_name=$(getent group $id 2>/dev/null |cut -d":" -f1)
+            echo "Group $name did not exist yet, but another group has the same id ($id, $other_name), renaming that group"
+            groupmod -g $id -n $name $other_name || :
+        else
+            echo "Group $name did not exist yet"
+            groupadd -g $id $name || :
+        fi
+    else
+        echo "Group $name already existed, modifying it"
+        groupmod -g $id $name || :
+    fi
+    if ! getent passwd $name; then
+        if getent passwd $id; then
+            other_name=$(getent passwd $id 2>/dev/null |cut -d":" -f1)
+            echo "User $name did not exist yet, but another user has the same id ($id, $other_name), renaming that user"
+            usermod -s /sbin/nologin -d / -u $id -g $id -l $name $other_name || :
+        else
+            echo "User $name did not exist yet"
+            useradd -M -N -s /sbin/nologin -d / -u $id -g $id $name || ::
+        fi
+    else
+        echo "User $name already existed, modifying it"
+        usermod -s /sbin/nologin -d / -u $id -g $id $name || :
+    fi
+done
 
 %files -f tmp/droid-config.files
 %defattr(-,root,root,-)
