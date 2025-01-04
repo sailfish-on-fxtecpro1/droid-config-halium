@@ -91,25 +91,26 @@ if [ -e $sys_persist ]; then
     fi
 fi
 
-if [ -d "/apex" ]; then
-    mount -t tmpfs tmpfs /apex
 
-    for path in "/system/apex/com.android.runtime.release" "/system/apex/com.android.runtime.debug" "/system/apex/com.android.runtime"; do
-        if [ -e "$path" ]; then
-            mkdir -p /apex/com.android.runtime
-            mount -o bind $path /apex/com.android.runtime
-            break
-        fi
-    done
+#Some special handling for /android/apex
+if [ -d /android/apex ]; then
+    echo "Handling /android/apex bind-mounts"
 
-    for path in "/system/apex/com.android.art.release" "/system/apex/com.android.art.debug" "/system/apex/com.android.art"; do
-        if [ -e "$path" ]; then
-            mkdir -p /apex/com.android.art
-            mount -o bind $path /apex/com.android.art
-            break
-        fi
+    mount -t tmpfs android_apex /android/apex
+    for apex in "com.android.runtime" "com.android.art" "com.android.i18n"; do
+        target_path="/android/apex/${apex}"
+
+        for suffix in ".release" ".debug" ""; do # No suffix is valid too
+            source_path="/android/system/apex/${apex}${suffix}"
+            if [ -e "$source_path" ]; then
+                mkdir -p $target_path
+                mount -o bind $source_path $target_path
+                break
+            fi
+        done
     done
 fi
+
 
 # List all fstab files
 fstab=$(ls /vendor/etc/fstab*)

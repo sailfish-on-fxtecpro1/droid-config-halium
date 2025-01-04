@@ -16,6 +16,10 @@ echo $NOTIFY_SOCKET > /run/droid-hal/notify-socket-name
 if [ -d /sys/fs/cgroup/schedtune ]; then
     umount -l /sys/fs/cgroup/schedtune || true
 fi
+
+mkdir -p /dev/__properties__
+mkdir -p /dev/socket
+
 # mount binderfs if needed
 if [ ! -e /dev/binder ]; then
     mkdir -p /dev/binderfs
@@ -23,8 +27,24 @@ if [ ! -e /dev/binder ]; then
     ln -s /dev/binderfs/*binder /dev
 fi
 
-mkdir -p /dev/__properties__
-mkdir -p /dev/socket
+# Some special handling for /android/apex
+if [ -d /android/apex ]; then
+    echo "Handling /android/apex bind-mounts"
+
+    mount -t tmpfs android_apex /android/apex
+    for apex in "com.android.runtime" "com.android.art" "com.android.i18n"; do
+        target_path="/android/apex/${apex}"
+
+        for suffix in ".release" ".debug" ""; do # No suffix is valid too
+            source_path="/android/system/apex/${apex}${suffix}"
+            if [ -e "$source_path" ]; then
+                mkdir -p $target_path
+                mount -o bind $source_path $target_path
+                break
+            fi
+        done
+    done
+fi
 
 # Bind mount any files in /usr/share/halium-overlay/ over the android system
 OVERLAYDIR=/usr/share/halium-overlay/
@@ -38,37 +58,6 @@ if [ -f /usr/bin/droid/halium-setup-local.sh ]; then
     /bin/sh /usr/bin/droid/halium-setup-local.sh
 fi
 
-lxc-start -n android -- /init
+lxc-start -n android
 
-lxc-wait -n android -s RUNNING -t 30
-containerpid="$(lxc-info -n android -p -H)"
-if [ -n "$containerpid" ]; then
-    while true; do
-        [ -f /proc/$containerpid/root/dev/.coldboot_done ] && break
-        sleep 0.1
-    done
-
-    # If the socket isn't available, 'getprop' falls back to reading files
-    # manually, causing a false positive of propertyservice being up
-    while [ ! -e /dev/socket/property_service ]; do sleep 0.1; done
-
-    systemd-notify --ready
-
-    # Systemd has a bug and can't handle the situation that notifying daemon (this one)
-    # does exit before systemd has fully handled the notify message.
-    # Thus we need to stay here and make sure systemd has handled our notify message
-    n=0
-    while [ $n -lt 3 ]; do
-        sleep 1
-        droid_status=`systemctl is-active droid-hal-init.service`
-        if [ "$droid_status" == "active" ]; then
-            break
-        fi
-        echo "info systemd again..."
-        systemd-notify --ready
-        let n=$n+1
-    done
-else
-    echo "droid container failed to start"
-    exit 1
-fi
+exit 0
