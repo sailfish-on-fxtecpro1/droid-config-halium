@@ -1,6 +1,5 @@
 Name:	    droid-config-halium
 Provides:   droid-hal
-Provides:   droid-config
 Provides:   droid-config-halium
 Summary:    Config packages for
 Version:    1
