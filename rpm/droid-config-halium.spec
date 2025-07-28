@@ -13,11 +13,6 @@ License:    GPLv2
 Source0:    %{name}-%{version}.tar.bz2
 AutoReqProv: no
 
-#Hack
-Provides:    droid-hal-kernel
-Provides:    droid-hal-img-boot
-Provides:    droid-hal-img-recovery
-
 %description
 %{summary}.
 
