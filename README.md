@@ -43,8 +43,11 @@ Require: droid-config-halium
 The generic droid-config-halium package contains halium port specific scripts which are shared across devices.
 These scripts start the halium android container.
 
-This pacakge exists tt https://github.com/sailfish-on-fxtecpro1/droid-config-halium and is built/packaged at
+This pacakge exists at https://github.com/sailfish-on-fxtecpro1/droid-config-halium and is built/packaged at
 https://build.sailfishos.org/project/show/nemo:devel:hw:halium with subprojects for the halium version.
+
+The halium OBS project contains all middleware packages that are device agnostic to reduce device projects having to build
+them.  See https://build.sailfishos.org/project/show/nemo:devel:hw:halium:13 as an example.
 
 ### Image Build Script
 An example build repository is at https://github.com/HelloVolla/sailfish-release-halium-algiz
