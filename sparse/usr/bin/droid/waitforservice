@@ -1,0 +1,14 @@
+#!/bin/sh
+echo Waiting for $1 $2...
+
+c=`getprop | grep $1 | grep $2 | wc -l`
+while [ $c -lt 1 ]
+do
+   echo Waiting for $1 $2...
+   c=`getprop | grep $1 | grep $2 | wc -l`
+   sleep 1
+done
+
+echo done
+exit 0
+

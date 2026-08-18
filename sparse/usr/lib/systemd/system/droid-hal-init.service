@@ -1,7 +1,7 @@
 [Unit]
 Description=droid-hal-init
 Wants=systemd-udev-settle.service
-After=local-fs.target systemd-udev-settle.service systemd-tmpfiles-setup.service
+After=mount-android.service
 Before=basic.target network.target bluetooth.service ofono.service sensorfwd.service
 DefaultDependencies=no
 Conflicts=shutdown.target
@@ -18,13 +18,12 @@ NotifyAccess=all
 # ProtectHome=true
 # PrivateTmp=true
 ExecStartPre=-/bin/sh /usr/bin/droid/droid-hal-early-init.sh
-ExecStart=/bin/sh /usr/bin/droid/droid-hal-startup.sh
+ExecStartPre=/bin/sh /usr/bin/droid/droid-hal-startup.sh
+ExecStart=/bin/sh /usr/bin/droid/droid-hal-notify.sh
 ExecStop=/bin/sh /usr/bin/droid/droid-hal-shutdown.sh
-Restart=always
 # Lets make sure we don't block minutes in case of errors.
 TimeoutSec=30
-StartLimitInterval=60
-StartLimitBurst=2
+Restart=no
 
 [Install]
 WantedBy=graphical.target

@@ -1,14 +1,31 @@
 #!/bin/bash
 
+BIND_MOUNT_PATH="/var/lib/lxc/android/rootfs"
+
+# Prioritize FuriOS slots over cmdline
+if [ -f /var/lib/furios/slot ]; then
+    furios_slot=$(</var/lib/furios/slot)
+    if [ "${furios_slot}" == "_a" ] || [ "${furios_slot}" == "_b" ]; then
+        ab_slot_suffix="${furios_slot}"
+    fi
+fi
+
 # On systems with A/B partition layout, current slot is provided via cmdline parameter.
-ab_slot_suffix=$(grep -o 'androidboot\.slot_suffix=..' /proc/cmdline |  cut -d "=" -f2)
+if [ -z "$ab_slot_suffix" ] && [ -e /proc/bootconfig ]; then
+    ab_slot_suffix=$(grep -o 'androidboot\.slot_suffix = ".."' /proc/bootconfig | cut -d '"' -f2)
+fi
+
+if [ -z "$ab_slot_suffix" ]; then
+    ab_slot_suffix=$(grep -o 'androidboot\.slot_suffix=..' /proc/cmdline |  cut -d "=" -f2)
+fi
+
 [ ! -z "$ab_slot_suffix" ] && echo "A/B slot system detected! Slot suffix is $ab_slot_suffix"
 
 find_partition_path() {
     label=$1
     path="/dev/$label"
     # In case fstab provides /dev/mmcblk0p* lines
-    for dir in by-partlabel by-name by-label ../mapper by-path by-uuid by-partuuid by-id; do
+    for dir in by-partlabel by-name by-label by-path by-uuid by-partuuid by-id; do
         # On A/B systems not all of the partitions are duplicated, so we have to check with and without suffix
         if [ -e "/dev/disk/$dir/$label$ab_slot_suffix" ]; then
             path="/dev/disk/$dir/$label$ab_slot_suffix"
@@ -32,43 +49,73 @@ parse_mount_flags() {
     echo $options
 }
 
-if [ -e /dev/.halium_jumpercable ]; then
-    echo "jumpercable boot detected, retriggering udev setup"
-    udevadm trigger --action=add
-    udevadm settle
+if [ -n "${BIND_MOUNT_PATH}" ] && ! mountpoint -q -- "${BIND_MOUNT_PATH}"; then
+    android_images="/userdata/android-rootfs.img /var/lib/lxc/android/android-rootfs.img"
+    for image in ${android_images}; do
+        if [ -f "${image}" ]; then
+            mount "${image}" "${BIND_MOUNT_PATH}"
+            break
+        fi
+    done
+fi
+
+if [ -e "/dev/disk/by-partlabel/super" ]; then
+    echo "mapping super partition"
+    dmsetup create --concise "$(parse-android-dynparts /dev/disk/by-partlabel/super)"
 fi
 
 echo "checking for vendor mount point"
 
-vendor_images="/userdata/vendor.img /var/lib/lxc/android/vendor.img"
+vendor_images="/userdata/vendor.img /var/lib/lxc/android/vendor.img /dev/disk/by-partlabel/vendor${ab_slot_suffix} /dev/disk/by-partlabel/vendor_a /dev/disk/by-partlabel/vendor_b /dev/mapper/dynpart-vendor /dev/mapper/dynpart-vendor${ab_slot_suffix} /dev/mapper/dynpart-vendor_a /dev/mapper/dynpart-vendor_b"
 for image in $vendor_images; do
     if [ -e $image ]; then
         echo "mounting vendor from $image"
         mount $image /vendor -o ro
+
+        if [ -e "/vendor/build.prop" ]; then
+            echo "found valid vendor partition: $image"
+            break
+        else
+            echo "$image is not a valid vendor partition"
+            umount /vendor
+        fi
     fi
 done
 
-if ! mountpoint -q -- /vendor; then
-    sys_vendor="/sys/firmware/devicetree/base/firmware/android/fstab/vendor"
-    default_vendor=$(find_partition_path "vendor")
-    if [ -e $sys_vendor ]; then
-        label=$(cat $sys_vendor/dev | awk -F/ '{print $NF}')
-        path=$(find_partition_path $label)
-        [ ! -e "$path" ] && echo "Error vendor not found" && exit
-        type=$(cat $sys_vendor/type)
-        options=$(parse_mount_flags $(cat $sys_vendor/mnt_flags))
-    elif [ -n $default_vendor ] && [ -e $default_vendor ]; then
-        # default to a partition labeled "vendor" even if not in DT fstab
-        path=$default_vendor
-        type=ext4
-        options=ro
+vendor_dlkm_images="/dev/mapper/dynpart-vendor_dlkm /dev/mapper/dynpart-vendor_dlkm${ab_slot_suffix} /dev/mapper/dynpart-vendor_dlkm_a /dev/mapper/dynpart-vendor_dlkm_b"
+for image in $vendor_dlkm_images; do
+    if [ -e $image ]; then
+        echo "mounting vendor_dlkm from $image"
+        mount $image /vendor_dlkm -o ro
+
+        if [ -e "/vendor_dlkm/etc/build.prop" ]; then
+            echo "found valid vendor_dlkm partition: $image"
+            break
+        else
+            echo "$image is not a valid vendor_dlkm partition"
+            umount /vendor_dlkm
+        fi
     fi
+done
+
+sys_vendor="/sys/firmware/devicetree/base/firmware/android/fstab/vendor"
+if [ -e $sys_vendor ] && ! mountpoint -q -- /vendor; then
+    label=$(cat $sys_vendor/dev | awk -F/ '{print $NF}')
+    path=$(find_partition_path $label)
+    [ ! -e "$path" ] && echo "Error vendor not found" && exit
+    type=$(cat $sys_vendor/type)
+    options=$(parse_mount_flags $(cat $sys_vendor/mnt_flags))
     echo "mounting $path as /vendor"
     mount $path /vendor -t $type -o $options
 fi
 
-# mount tmpfs for vendor mounts
-mount -t tmpfs tmpfs /mnt
+# Bind-mount /vendor if we should. Legacy devices do not have /vendor
+# on a separate partition and we should handle that.
+if [ -n "${BIND_MOUNT_PATH}" ] && mountpoint -q -- /vendor; then
+    # Mountpoint, bind-mount. We don't use rbind as we're going
+    # to go through the fstab anyways.
+    mount -o bind /vendor "${BIND_MOUNT_PATH}/vendor"
+fi
 
 sys_persist="/sys/firmware/devicetree/base/firmware/android/fstab/persist"
 if [ -e $sys_persist ]; then
@@ -77,48 +124,37 @@ if [ -e $sys_persist ]; then
     # [ ! -e "$path" ] && echo "Error persist not found" && exit
     type=$(cat $sys_persist/type)
     options=$(parse_mount_flags $(cat $sys_persist/mnt_flags))
-    if [ -e $sys_persist/mnt_point ]; then
-        target=`cat $sys_persist/mnt_point`
-        echo "mounting $path as $target"
-        mkdir -p $target
-        mount $path $target -t $type -o $options
+    echo "mounting $path as /mnt/vendor/persist"
+    mount $path /mnt/vendor/persist -t $type -o $options
+fi
+
+echo "checking if system overlay exists"
+if [ -d "/usr/share/halium-overlay/system" ]; then
+    echo "mounting android's system overlay"
+    if [ $(uname -r | cut -d "." -f 1) -ge "4" ]; then
+        mount -t overlay overlay -o lowerdir=/usr/share/halium-overlay/system:/system /system
     else
-        # if there is no indication that persist should be mounted elsewhere, default to old location
-        echo "mounting $path as /persist and /mnt/vendor/persist"
-        mount $path /persist -t $type -o $options
-        mkdir -p /mnt/vendor/persist
-        mount $path /mnt/vendor/persist -t $type -o $options
+        mount -t overlay overlay -o lowerdir=/var/lib/lxc/android/rootfs/system,upperdir=/usr/lib/droid-system-overlay,workdir=/var/lib/lxc/android/ /var/lib/lxc/android/rootfs/system
     fi
 fi
 
-if [ -d "/apex" ]; then
-    mount -t tmpfs tmpfs /apex
-
-    for path in "/system/apex/com.android.runtime.release" "/system/apex/com.android.runtime.debug" "/system/apex/com.android.runtime"; do
-        if [ -e "$path" ]; then
-            mkdir -p /apex/com.android.runtime
-            mount -o bind $path /apex/com.android.runtime
-            break
-        fi
-    done
-
-    for path in "/system/apex/com.android.art.release" "/system/apex/com.android.art.debug" "/system/apex/com.android.art"; do
-        if [ -e "$path" ]; then
-            mkdir -p /apex/com.android.art
-            mount -o bind $path /apex/com.android.art
-            break
-        fi
-    done
+echo "checking if vendor overlay exists"
+if [ -d "/usr/share/halium-overlay/vendor" ]; then
+    echo "mounting android's vendor overlay"
+    if [ $(uname -r | cut -d "." -f 1) -ge "4" ]; then
+        mount -t overlay overlay -o lowerdir=/usr/share/halium-overlay/vendor:/vendor /vendor
+    else
+        mount -t overlay overlay -o lowerdir=/var/lib/lxc/android/rootfs/vendor,upperdir=/usr/lib/droid-vendor-overlay,workdir=/var/lib/lxc/android/ /var/lib/lxc/android/rootfs/vendor
+    fi
 fi
 
-# List all fstab files
+# Assume there's only one fstab in vendor
 fstab=$(ls /vendor/etc/fstab*)
 [ -z "$fstab" ] && echo "fstab not found" && exit
 
 echo "checking fstab $fstab for additional mount points"
 
-# If there's more than one file, this will simply concatinate them together
-cat ${fstab} | while read line; do
+cat ${fstab} ${EXTRA_FSTAB} | while read line; do
     set -- $line
 
     # stop processing if we hit the "#endhalium" comment in the file
@@ -129,7 +165,7 @@ cat ${fstab} | while read line; do
     ([ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]) && continue
     ([ "$2" = "/system" ] || [ "$2" = "/data" ] || [ "$2" = "/" ] \
     || [ "$2" = "auto" ] || [ "$2" = "/vendor" ] || [ "$2" = "none" ] \
-    || [ "$2" = "/misc" ] || [ "$2" = "/product" ]) && continue
+    || [ "$2" = "/misc" ] || [ "$2" = "/system_ext" ] || [ "$2" = "/product" ]) && continue
     ([ "$3" = "emmc" ] || [ "$3" = "swap" ] || [ "$3" = "mtd" ]) && continue
 
     label=$(echo $1 | awk -F/ '{print $NF}')
@@ -139,21 +175,15 @@ cat ${fstab} | while read line; do
 
     path=$(find_partition_path $label)
 
-    if [ ! -e "$path" ]; then
-        partition_images="/userdata/$label.img /var/lib/lxc/android/$label.img"
-        for image in $partition_images; do
-            if [ -e $image ]; then
-                path="$image"
-            fi
-        done
-    fi
-
     [ ! -e "$path" ] && continue
 
     mkdir -p $2
     echo "mounting $path as $2"
     mount $path $2 -t $3 -o $(parse_mount_flags $4)
-done
 
-# some mounts may fail, but this is not fatal, so make sure to exit normally
-exit 0
+    # Bind mount on rootfs if we should
+    if [ -n "${BIND_MOUNT_PATH}" ] && [[ ${2} != /mnt/* ]]; then
+        # /mnt is recursively binded via the LXC configuration
+        mount -o bind ${2} "${BIND_MOUNT_PATH}/${2}"
+    fi
+done
